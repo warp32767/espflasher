@@ -17,7 +17,6 @@
 #include "pico/stdlib.h"
 #include "pins.h"
 #include "spiex.h"
-#include "pio_spi.h"
 
 void xbox_init()
 {
