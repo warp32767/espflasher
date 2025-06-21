@@ -31,47 +31,8 @@
 #include "pins.h"
 #include "mmc_defs.h"
 
+
 #define LED_PIN 25
-
-// Invoked when device is mounted
-void tud_mount_cb(void)
-{
-	xbox_stop_smc();
-
-	uint32_t flash_config = xbox_get_flash_config();
-
-	printf("flash_config: %x\n", flash_config);
-}
-
-// Invoked when device is unmounted
-void tud_umount_cb(void)
-{
-	xbox_start_smc();
-
-	printf("Bye!\n");
-}
-
-// Invoked when usb bus is suspended
-// remote_wakeup_en : if host allow us  to perform remote wakeup
-// Within 7ms, device must draw an average of current less than 2.5 mA from bus
-void tud_suspend_cb(bool remote_wakeup_en)
-{
-	(void)remote_wakeup_en;
-
-	xbox_start_smc();
-
-	printf("Bye!\n");
-}
-
-// Invoked when usb bus is resumed
-void tud_resume_cb(void)
-{
-	xbox_stop_smc();
-
-	uint32_t flash_config = xbox_get_flash_config();
-
-	printf("flash_config: %x\n", flash_config);
-}
 
 void led_blink(void)
 {

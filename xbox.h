@@ -19,6 +19,8 @@
 
 void xbox_init();
 
+extern bool xbox_smc_stopped;
+
 void xbox_start_smc();
 void xbox_stop_smc();
 

@@ -21,30 +21,31 @@
 
 void xbox_init()
 {
+	spiex_init();
+
 	gpio_init(SMC_DBG_EN);
-	gpio_put(SMC_DBG_EN, 1);
+	gpio_put(SMC_DBG_EN, 0);
 	gpio_set_dir(SMC_DBG_EN, GPIO_OUT);
 
 	gpio_init(SMC_RST_XDK_N);
 	gpio_put(SMC_RST_XDK_N, 1);
 	gpio_set_dir(SMC_RST_XDK_N, GPIO_OUT);
-
-	gpio_init(SPI_SS_N);
-	gpio_put(SPI_SS_N, 1);
-	gpio_set_dir(SPI_SS_N, GPIO_OUT);
 }
+
+bool xbox_smc_stopped = false;
 
 void xbox_start_smc()
 {
-	spiex_deinit();
-
 	gpio_put(SMC_DBG_EN, 0);
 	gpio_put(SMC_RST_XDK_N, 0);
 
 	sleep_ms(50);
 
 	gpio_put(SMC_RST_XDK_N, 1);
+
+	xbox_smc_stopped = false;
 }
+
 
 void xbox_stop_smc()
 {
@@ -66,29 +67,32 @@ void xbox_stop_smc()
 
 	sleep_ms(50);
 
-	spiex_init();
+	xbox_smc_stopped = true;
 }
+
+static uint32_t xbox_cached_flash_config = 0;
 
 uint32_t xbox_get_flash_config()
 {
-	static uint32_t flash_config = 0;
-	if (!flash_config)
-		flash_config = spiex_read_reg(0);
-
-	return flash_config;
+	if (!xbox_smc_stopped) {
+		xbox_cached_flash_config = 0;
+		return 0;
+	}
+	xbox_cached_flash_config = spiex_read_reg(0);
+	return xbox_cached_flash_config;
 }
 
-uint16_t xbox_nand_get_status()
+static uint16_t xbox_nand_get_status()
 {
 	return spiex_read_reg(0x04);
 }
 
-void xbox_nand_clear_status()
+static void xbox_nand_clear_status()
 {
 	spiex_write_reg(0x04, spiex_read_reg(0x04));
 }
 
-int xbox_nand_wait_ready(uint16_t timeout)
+static int xbox_nand_wait_ready(uint16_t timeout)
 {
 	do
 	{
@@ -101,6 +105,9 @@ int xbox_nand_wait_ready(uint16_t timeout)
 
 int xbox_nand_read_block(uint32_t lba, uint8_t *buffer, uint8_t *spare)
 {
+	if (!xbox_smc_stopped || !xbox_cached_flash_config)
+		return 0;
+
 	xbox_nand_clear_status();
 
 	spiex_write_reg(0x0C, lba << 9);
@@ -135,6 +142,9 @@ int xbox_nand_read_block(uint32_t lba, uint8_t *buffer, uint8_t *spare)
 
 int xbox_nand_erase_block(uint32_t lba)
 {
+	if (!xbox_smc_stopped || !xbox_cached_flash_config)
+		return 0;
+
 	xbox_nand_clear_status();
 
 	spiex_write_reg(0x00, spiex_read_reg(0x00) | 0x08);
@@ -153,10 +163,11 @@ int xbox_nand_erase_block(uint32_t lba)
 
 int xbox_nand_write_block(uint32_t lba, uint8_t *buffer, uint8_t *spare)
 {
-	int flash_config = xbox_get_flash_config();
+	if (!xbox_smc_stopped || !xbox_cached_flash_config)
+		return 0;
 
-	int major = (flash_config >> 17) & 3;
-	int minor = (flash_config >> 4) & 3;
+	int major = (xbox_cached_flash_config >> 17) & 3;
+	int minor = (xbox_cached_flash_config >> 4) & 3;
 
 	int blocksize = 0x4000;
 	if (major >= 1)
