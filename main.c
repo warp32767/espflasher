@@ -27,9 +27,7 @@
 #include "tusb.h"
 #include "xbox.h"
 #include "isd1200.h"
-#include "sdio.h"
 #include "pins.h"
-#include "mmc_defs.h"
 
 #define CDC_PICO_FLASHER 0
 #define CDC_KER_DBG 1
@@ -124,6 +122,7 @@ void pico_flasher_stream(uint8_t cdc_id)
 		}
 		else
 		{
+/*
 			static uint8_t buffer[4 + 0x200];
 			int ret = sd_readblocks_sync(&buffer[4], stream_offset, 1);
 			*(uint32_t *)buffer = ret;
@@ -137,6 +136,7 @@ void pico_flasher_stream(uint8_t cdc_id)
 				tud_cdc_n_write(cdc_id, &ret, 4);
 				do_stream = false;
 			}
+*/
 		}
 	}
 }
@@ -265,6 +265,7 @@ static void pico_flasher_rx_cb(uint8_t cdc_id)
 		}
 		else if (cmd.cmd == EMMC_DETECT)
 		{
+/*
 			if (!emmc_detected)
 			{
 				gpio_init(MMC_CLK_PIN);
@@ -272,9 +273,11 @@ static void pico_flasher_rx_cb(uint8_t cdc_id)
 				emmc_detected = gpio_get(MMC_CLK_PIN);
 			}
 			tud_cdc_n_write(cdc_id, &emmc_detected, 1);
+*/
 		}
 		else if (cmd.cmd == EMMC_INIT)
 		{
+/*
 			// Put SMC into reset
 			gpio_init(SMC_RST_XDK_N);
 			gpio_set_dir(SMC_RST_XDK_N, GPIO_OUT);
@@ -282,32 +285,41 @@ static void pico_flasher_rx_cb(uint8_t cdc_id)
 
 			uint32_t ret = sd_init();
 			tud_cdc_n_write(cdc_id, &ret, 4);
+*/
 		}
 		else if (cmd.cmd == EMMC_GET_CID)
 		{
+/*
 			uint8_t cid_raw[16];
 			sd_read_cid(cid_raw);
 			tud_cdc_n_write(cdc_id, cid_raw, sizeof(cid_raw));
+*/
 		}
 		else if (cmd.cmd == EMMC_GET_CSD)
 		{
+/*
 			uint8_t csd_raw[16];
 			sd_read_csd(csd_raw);
 			tud_cdc_n_write(cdc_id, csd_raw, sizeof(csd_raw));
+*/
 		}
 		else if (cmd.cmd == EMMC_GET_EXT_CSD)
 		{
+/*
 			uint8_t ext_csd[512];
 			sd_read_ext_csd(ext_csd);
 			tud_cdc_n_write(cdc_id, ext_csd, sizeof(ext_csd));
+*/
 		}
 		else if (cmd.cmd == EMMC_READ)
 		{
+/*
 			uint8_t buffer[0x200];
 			int ret = sd_readblocks_sync(buffer, cmd.lba, 1);
 			tud_cdc_n_write(cdc_id, &ret, 4);
 			if (ret == 0)
 				tud_cdc_n_write(cdc_id, buffer, sizeof(buffer));
+*/
 		}
 		else if (cmd.cmd == EMMC_READ_STREAM)
 		{
@@ -318,12 +330,13 @@ static void pico_flasher_rx_cb(uint8_t cdc_id)
 		}
 		else if (cmd.cmd == EMMC_WRITE)
 		{
-			uint8_t buffer[0x200];
+/*			uint8_t buffer[0x200];
 			uint32_t count = tud_cdc_n_read(cdc_id, &buffer, sizeof(buffer));
 			if (count != sizeof(buffer))
 				return;
 			uint32_t ret = sd_writeblocks_sync(buffer, cmd.lba, 1);
 			tud_cdc_n_write(cdc_id, &ret, 4);
+*/
 		}
 
 		tud_cdc_n_write_flush(cdc_id);
