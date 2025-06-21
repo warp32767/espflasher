@@ -17,6 +17,14 @@ Open source XBOX 360 NAND flasher firmware for Raspberry Pi Pico
 | GP21  | SMC_RST_XDK_N  |
 | GND  |  GND |
 
+### Kernel Debug UART
+
+| Pico | Xbox |
+| ---- | -----|
+| GP0  | RX   |
+| GP1  | TX   |
+| GND  | GND  |
+
 ### ISD12xx Audible Feedback IC
 |  | Pico | Trinity | Corona |
 | ------------- | ------------- | ------------- | ------------- |
