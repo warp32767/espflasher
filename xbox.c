@@ -79,6 +79,9 @@ uint32_t xbox_get_flash_config()
 		return 0;
 	}
 	xbox_cached_flash_config = spiex_read_reg(0);
+	if ((xbox_cached_flash_config & 0xF0000000) == 0xC0000000) {
+		xbox_cached_flash_config = 0xC0462002;
+	}
 	return xbox_cached_flash_config;
 }
 
