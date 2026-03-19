@@ -55,6 +55,7 @@ void led_blink(void)
 #define READ_FLASH 0x02
 #define WRITE_FLASH 0x03
 #define READ_FLASH_STREAM 0x04
+#define ERASE_FLASH 0x05
 
 #define SET_SMC_WORKAROUND 0x20
 #define STOP_SMC 0x21
@@ -198,6 +199,11 @@ static void pico_flasher_rx_cb(uint8_t cdc_id)
 			if (count != sizeof(buffer))
 				return;
 			uint32_t ret = xbox_nand_write_block(cmd.lba, buffer, &buffer[0x200]);
+			tud_cdc_n_write(cdc_id, &ret, 4);
+		}
+		else if (cmd.cmd == ERASE_FLASH)
+		{
+			uint32_t ret = xbox_nand_erase_block(cmd.lba);
 			tud_cdc_n_write(cdc_id, &ret, 4);
 		}
 		else if (cmd.cmd == READ_FLASH_STREAM)
