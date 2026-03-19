@@ -59,6 +59,8 @@ enum
 	ITF_NUM_CDC_0_DATA,
 	ITF_NUM_CDC_1,
 	ITF_NUM_CDC_1_DATA,
+	ITF_NUM_CDC_2,
+	ITF_NUM_CDC_2_DATA,
 	ITF_NUM_TOTAL
 };
 
@@ -72,11 +74,16 @@ enum
 #define EPNUM_CDC_1_OUT     0x04
 #define EPNUM_CDC_1_IN      0x84
 
+#define EPNUM_CDC_2_NOTIF   0x85
+#define EPNUM_CDC_2_OUT     0x06
+#define EPNUM_CDC_2_IN      0x86
+
 uint8_t const desc_fs_configuration[] =
 {
 	TUD_CONFIG_DESCRIPTOR(1, ITF_NUM_TOTAL, 0, CONFIG_TOTAL_LEN, TUSB_DESC_CONFIG_ATT_REMOTE_WAKEUP, 100),
 	TUD_CDC_DESCRIPTOR(ITF_NUM_CDC_0, 4, EPNUM_CDC_0_NOTIF, 8, EPNUM_CDC_0_OUT, EPNUM_CDC_0_IN, 64),
 	TUD_CDC_DESCRIPTOR(ITF_NUM_CDC_1, 5, EPNUM_CDC_1_NOTIF, 8, EPNUM_CDC_1_OUT, EPNUM_CDC_1_IN, 64),
+	TUD_CDC_DESCRIPTOR(ITF_NUM_CDC_2, 6, EPNUM_CDC_2_NOTIF, 8, EPNUM_CDC_2_OUT, EPNUM_CDC_2_IN, 64),
 };
 
 // Invoked when received GET CONFIGURATION DESCRIPTOR
@@ -102,6 +109,7 @@ char const *string_desc_arr[] =
 		"123456",			// 3: Serials, should use chip ID
 		"PicoFlasher UART",
 		"KER_DBG UART",
+		"SMC_DBG UART",
 };
 
 static uint16_t _desc_str[32];

@@ -30,6 +30,7 @@
 
 #define CDC_PICO_FLASHER 0
 #define CDC_KER_DBG 1
+#define CDC_SMC_DBG 2
 
 #define LED_PIN 25
 
@@ -336,9 +337,23 @@ static void pico_flasher_rx_cb(uint8_t cdc_id)
 	}
 }
 
-static void ker_dbg_line_coding_cb(uint8_t cdc_id, const cdc_line_coding_t *line_coding)
-{
+static void uart_bridge_line_coding_cb(uint8_t cdc_id, const cdc_line_coding_t *line_coding, uart_inst_t *uart);
 
+static void uart_bridge_init(uint8_t cdc_id, uart_inst_t *uart, int tx_pin, int rx_pin)
+{
+	// Init UART
+	uart_init(uart, 115200);
+	gpio_set_function(tx_pin, UART_FUNCSEL_NUM(uart, GPIO_FUNC_UART));
+	gpio_set_function(rx_pin, UART_FUNCSEL_NUM(uart, GPIO_FUNC_UART));
+
+	// Set initial line coding from CDC
+	cdc_line_coding_t line_coding;
+	tud_cdc_get_line_coding(&line_coding);
+	uart_bridge_line_coding_cb(cdc_id, &line_coding, uart);
+}
+
+static void uart_bridge_line_coding_cb(uint8_t cdc_id, const cdc_line_coding_t *line_coding, uart_inst_t *uart)
+{
 	static const uart_parity_t uart_parity_tusb_to_pico[] = {
 		UART_PARITY_NONE,	// 0: None
 		UART_PARITY_ODD,	// 1: Odd
@@ -354,22 +369,22 @@ static void ker_dbg_line_coding_cb(uint8_t cdc_id, const cdc_line_coding_t *line
 	};
 
 
-	uart_set_baudrate(uart0, line_coding->bit_rate);
-	uart_set_format(uart0,
+	uart_set_baudrate(uart, line_coding->bit_rate);
+	uart_set_format(uart,
 		line_coding->data_bits,
 		uart_stop_bits_tusb_to_pico[line_coding->stop_bits],
 		uart_parity_tusb_to_pico[line_coding->parity]);
 }
 
-static void ker_dbg_task(uint8_t cdc_id)
+static void uart_bridge_task(uint8_t cdc_id, uart_inst_t *uart)
 {
 	uint8_t tmp;
-	for (int maxr = 64; tud_cdc_n_available(cdc_id) && uart_is_writable(uart0) && maxr; --maxr) {
+	for (int maxr = 64; tud_cdc_n_available(cdc_id) && uart_is_writable(uart) && maxr; --maxr) {
 		tud_cdc_n_read(cdc_id, &tmp, 1);
-		uart_write_blocking(uart0, &tmp,  1);
+		uart_write_blocking(uart, &tmp,  1);
 	}
-	for (int maxw = 64; uart_is_readable(uart0) && tud_cdc_n_write_available(cdc_id) && maxw; --maxw) {
-		uart_read_blocking(uart0, &tmp, 1);
+	for (int maxw = 64; uart_is_readable(uart) && tud_cdc_n_write_available(cdc_id) && maxw; --maxw) {
+		uart_read_blocking(uart, &tmp, 1);
 		tud_cdc_n_write(cdc_id, &tmp, 1);
 	}
 	tud_cdc_n_write_flush(cdc_id);
@@ -399,37 +414,30 @@ void tud_cdc_line_coding_cb(uint8_t cdc_id, const cdc_line_coding_t *line_coding
 		rom_reset_usb_boot_extra(-1, 0, 0);
 
 	if (cdc_id == CDC_KER_DBG)
-		ker_dbg_line_coding_cb(cdc_id, line_coding);
+		uart_bridge_line_coding_cb(cdc_id, line_coding, uart0);
+	else if (cdc_id == CDC_SMC_DBG)
+		uart_bridge_line_coding_cb(cdc_id, line_coding, uart1);
 }
-
 
 int main(void)
 {
 	gpio_init(LED_PIN);
 	gpio_set_dir(LED_PIN, GPIO_OUT);
 
-	uart_init(uart0, 0);
-	gpio_set_function(0, UART_FUNCSEL_NUM(uart0, GPIO_FUNC_UART));
-	gpio_set_function(1, UART_FUNCSEL_NUM(uart0, GPIO_FUNC_UART));
-
-	uart_init(uart1, 0);
-	gpio_set_function(4, UART_FUNCSEL_NUM(uart1, GPIO_FUNC_UART));
-	gpio_set_function(5, UART_FUNCSEL_NUM(uart1, GPIO_FUNC_UART));
-
-	gpio_init(2);
-	gpio_set_dir(2, GPIO_IN);
-	gpio_init(3);
-	gpio_set_dir(3, GPIO_IN);
-
-	xbox_init();
-
 	tusb_init();
+	xbox_init();
+	uart_bridge_init(CDC_KER_DBG, uart0, UART0_TX, UART0_RX);
+	uart_bridge_init(CDC_SMC_DBG, uart1, UART1_TX, UART1_RX);
+
+	gpio_init(I2C1_SDA);
+	gpio_init(I2C1_SCL);
 
 	while (1)
 	{
 		tud_task();
 		pico_flasher_stream(CDC_PICO_FLASHER);
-		ker_dbg_task(CDC_KER_DBG);
+		uart_bridge_task(CDC_KER_DBG, uart0);
+		uart_bridge_task(CDC_SMC_DBG, uart1);
 	}
 
 	return 0;

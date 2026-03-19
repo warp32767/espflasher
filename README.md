@@ -20,11 +20,22 @@ Open source XBOX 360 NAND flasher firmware for Raspberry Pi Pico
 
 ### Kernel Debug UART
 
-| Pico | Xbox |
-| ---- | ---- |
-| GP0  | RX   |
-| GP1  | TX   |
-| GND  | GND  |
+| Pico           | Xbox          |
+| ---------------| ------------- |
+| GP0 (UART0_TX) | KER_DBG_RXD   |
+| GP1 (UART0_RX) | KER_DBG_TXD   |
+
+### SMC Debug UART
+
+There is a second debug UART in the Southbridge that can be used by the SMC firmware to read/write bytes.
+On most Retail PCBs only the TX pin is actually wired to to the debug headers, but it can be accessed with
+some modification.
+For simple debug output from SMC firmware, it enough to only wire up SMC_DBG_TXD.
+
+| Pico           | Xbox          |
+| ---------------| ------------- |
+| GP4 (UART1_TX) | SMC_DBG_RXD   |
+| GP5 (UART1_RX) | SMC_DBG_TXD   |
 
 ### ISD12xx Audible Feedback IC
 

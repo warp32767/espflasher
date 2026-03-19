@@ -17,6 +17,18 @@
 #ifndef __PINS_H__
 #define __PINS_H__
 
+// KER_DBG
+#define UART0_TX 0
+#define UART0_RX 1
+
+// For what future code could this be? (Hint it's for SMBUS)
+#define I2C1_SDA 2
+#define I2C1_SCL 3
+
+// SMC_DBG
+#define UART1_TX 4
+#define UART1_RX 5
+
 #define SPI_MISO 16
 #define SPI_SS_N 17
 #define SPI_CLK 18
