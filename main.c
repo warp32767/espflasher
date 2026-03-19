@@ -55,6 +55,10 @@ void led_blink(void)
 #define WRITE_FLASH 0x03
 #define READ_FLASH_STREAM 0x04
 
+#define SET_SMC_WORKAROUND 0x20
+#define STOP_SMC 0x21
+#define START_SMC 0x22
+
 #define EMMC_DETECT 0x50
 #define EMMC_INIT 0x51
 #define EMMC_GET_CID 0x52
@@ -137,6 +141,8 @@ void pico_flasher_stream(uint8_t cdc_id)
 	}
 }
 
+static bool enable_smc_workaround = true;
+
 static void pico_flasher_rx_cb(uint8_t cdc_id)
 {
 	led_blink();
@@ -168,9 +174,10 @@ static void pico_flasher_rx_cb(uint8_t cdc_id)
 		}
 		else if (cmd.cmd == GET_FLASH_CONFIG)
 		{
-			// HACK: only stop SMC here so that the Pico can be used as a UART bridge
-			// All users of PicoFlasher send this command before reading/writing anyways
-			xbox_stop_smc();
+			// Stop SMC before reading the flash config.
+			// Workaround for existing software not using the SMC control commands.
+			if (enable_smc_workaround)
+				xbox_stop_smc();
 
 			uint32_t fc = xbox_get_flash_config();
 			tud_cdc_n_write(cdc_id, &fc, 4);
@@ -198,6 +205,18 @@ static void pico_flasher_rx_cb(uint8_t cdc_id)
 			do_stream = true;
 			stream_offset = 0;
 			stream_end = cmd.lba;
+		}
+		else if (cmd.cmd == SET_SMC_WORKAROUND)
+		{
+			enable_smc_workaround = cmd.lba & 1;
+		}
+		else if (cmd.cmd == STOP_SMC)
+		{
+			xbox_stop_smc();
+		}
+		else if (cmd.cmd == START_SMC)
+		{
+			xbox_start_smc();
 		}
 		if (cmd.cmd == ISD1200_INIT)
 		{
@@ -319,8 +338,6 @@ static void pico_flasher_rx_cb(uint8_t cdc_id)
 
 static void ker_dbg_line_coding_cb(uint8_t cdc_id, const cdc_line_coding_t *line_coding)
 {
-	if (xbox_smc_stopped) // HACK: start SMC because kernel UART speed changed
-		xbox_start_smc();
 
 	static const uart_parity_t uart_parity_tusb_to_pico[] = {
 		UART_PARITY_NONE,	// 0: None
@@ -371,9 +388,13 @@ void tud_cdc_tx_complete_cb(uint8_t cdc_id)
 		led_blink();
 }
 
-
 void tud_cdc_line_coding_cb(uint8_t cdc_id, const cdc_line_coding_t *line_coding)
 {
+	// Start SMC on UART config change (e.g. setting speed of debug UART).
+	// Workaround for existing software not using the SMC control commands.
+	if (enable_smc_workaround && xbox_smc_stopped)
+		xbox_start_smc();
+
 	if (line_coding->bit_rate == 1200)
 		rom_reset_usb_boot_extra(-1, 0, 0);
 
