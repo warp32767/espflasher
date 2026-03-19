@@ -9,6 +9,9 @@ project(PicoFlasher C CXX ASM)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 
+# Use fastest possible clock for RP2040
+set(PICO_USE_FASTEST_SUPPORTED_CLOCK 1)
+
 # Creates a pico-sdk subdirectory in our project for the libraries
 pico_sdk_init()
 

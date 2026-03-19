@@ -384,11 +384,6 @@ void tud_cdc_line_coding_cb(uint8_t cdc_id, const cdc_line_coding_t *line_coding
 
 int main(void)
 {
-	vreg_set_voltage(VREG_VOLTAGE_1_30);
-	set_sys_clock_khz(266000, true);
-
-	uint32_t freq = clock_get_hz(clk_sys);
-	clock_configure(clk_peri, 0, CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_CLK_SYS, freq, freq);
 	gpio_init(LED_PIN);
 	gpio_set_dir(LED_PIN, GPIO_OUT);
 
