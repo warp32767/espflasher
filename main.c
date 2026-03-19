@@ -15,7 +15,6 @@
  */
 
 #include <stdlib.h>
-#include <stdio.h>
 #include <string.h>
 
 #include "bsp/board.h"
@@ -390,9 +389,6 @@ int main(void)
 
 	uint32_t freq = clock_get_hz(clk_sys);
 	clock_configure(clk_peri, 0, CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_CLK_SYS, freq, freq);
-
-	stdio_init_all();
-
 	gpio_init(LED_PIN);
 	gpio_set_dir(LED_PIN, GPIO_OUT);
 
