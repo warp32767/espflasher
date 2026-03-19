@@ -171,7 +171,7 @@ static void pico_flasher_rx_cb(uint8_t cdc_id)
 
 		if (cmd.cmd == GET_VERSION)
 		{
-			uint32_t ver = 3;
+			uint32_t ver = 4;
 			tud_cdc_n_write(cdc_id, &ver, 4);
 		}
 		else if (cmd.cmd == GET_FLASH_CONFIG)
