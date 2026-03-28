@@ -28,9 +28,9 @@ Open source XBOX 360 NAND flasher firmware for Raspberry Pi Pico
 ### SMC Debug UART
 
 There is a second debug UART in the Southbridge that can be used by the SMC firmware to read/write bytes.
-On most Retail PCBs only the TX pin is actually wired to to the debug headers, but it can be accessed with
-some modification.
-For simple debug output from SMC firmware, it enough to only wire up SMC_DBG_TXD.
+On most Retail PCBs only the TX pin is actually wired to to the debug headers, but RX can be accessed with
+some modifications.
+For simple debug output from SMC firmware, it is enough to only wire up SMC_DBG_TXD.
 
 | Pico           | Xbox          |
 | ---------------| ------------- |
