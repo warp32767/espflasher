@@ -21,7 +21,6 @@
 #include "hardware/vreg.h"
 #include "hardware/clocks.h"
 #include "pico/stdlib.h"
-#include "pico/bootrom.h"
 
 #include "tusb.h"
 #include "xbox.h"
@@ -68,8 +67,6 @@ void led_blink(void)
 #define EMMC_READ 0x55
 #define EMMC_READ_STREAM 0x56
 #define EMMC_WRITE 0x57
-
-#define REBOOT_TO_BOOTLOADER 0xFE
 
 #pragma pack(push, 1)
 struct cmd
@@ -212,10 +209,6 @@ static void pico_flasher_rx_cb(uint8_t cdc_id)
 		{
 			xbox_start_smc();
 		}
-		else if (cmd.cmd == REBOOT_TO_BOOTLOADER)
-		{
-			reset_usb_boot(0, 0);
-		}
 		else if (cmd.cmd == EMMC_DETECT)
 		{
 			uint32_t fc = xbox_get_flash_config();
@@ -346,9 +339,6 @@ void tud_cdc_line_coding_cb(uint8_t cdc_id, const cdc_line_coding_t *line_coding
 	// Workaround for existing software not using the SMC control commands.
 	if (enable_smc_workaround && xbox_smc_stopped)
 		xbox_start_smc();
-
-	if (line_coding->bit_rate == 1200)
-		rom_reset_usb_boot_extra(-1, 0, 0);
 
 	if (cdc_id == CDC_KER_DBG)
 		uart_bridge_line_coding_cb(cdc_id, line_coding, uart0);

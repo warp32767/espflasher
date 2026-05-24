@@ -10,6 +10,14 @@
 
 static spi_device_handle_t pfc_spi_dev;
 
+#ifndef PFC_SPI_HOST
+#define PFC_SPI_HOST SPI3_HOST
+#endif
+
+#ifndef PFC_SPI_CLOCK_HZ
+#define PFC_SPI_CLOCK_HZ (20 * 1000 * 1000)
+#endif
+
 static const uint8_t lsb2msb[] = {
 	0x00, 0x80, 0x40, 0xc0, 0x20, 0xa0, 0x60, 0xe0, 0x10, 0x90, 0x50, 0xd0, 0x30, 0xb0, 0x70, 0xf0,
 	0x08, 0x88, 0x48, 0xc8, 0x28, 0xa8, 0x68, 0xe8, 0x18, 0x98, 0x58, 0xd8, 0x38, 0xb8, 0x78, 0xf8,
@@ -50,16 +58,16 @@ void spiex_init(void)
 		.max_transfer_sz = 0,
 	};
 
-	ESP_ERROR_CHECK(spi_bus_initialize(SPI3_HOST, &buscfg, SPI_DMA_CH_AUTO));
+	ESP_ERROR_CHECK(spi_bus_initialize(PFC_SPI_HOST, &buscfg, SPI_DMA_CH_AUTO));
 
 	spi_device_interface_config_t devcfg = {
-		.clock_speed_hz = 26 * 1000 * 1000,
+		.clock_speed_hz = PFC_SPI_CLOCK_HZ,
 		.mode = 0,
 		.spics_io_num = -1,
 		.queue_size = 1,
 	};
 
-	ESP_ERROR_CHECK(spi_bus_add_device(SPI3_HOST, &devcfg, &pfc_spi_dev));
+	ESP_ERROR_CHECK(spi_bus_add_device(PFC_SPI_HOST, &devcfg, &pfc_spi_dev));
 }
 
 void spiex_deinit(void)
@@ -68,7 +76,7 @@ void spiex_deinit(void)
 		spi_bus_remove_device(pfc_spi_dev);
 		pfc_spi_dev = NULL;
 	}
-	spi_bus_free(SPI3_HOST);
+	spi_bus_free(PFC_SPI_HOST);
 }
 
 uint32_t spiex_read_reg(uint8_t reg)

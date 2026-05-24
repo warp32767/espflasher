@@ -120,6 +120,13 @@ static int pfc_send_u32_with_data(int sock, uint32_t v, const void *data, uint32
 
 static bool enable_smc_workaround = true;
 
+static void maybe_stop_smc(void)
+{
+	if (enable_smc_workaround && !xbox_smc_stopped) {
+		xbox_stop_smc();
+	}
+}
+
 static int handle_cmd(int sock, const uint8_t *payload, uint32_t payload_len)
 {
 	if (payload_len < sizeof(pfc_cmd_t)) {
@@ -153,14 +160,13 @@ static int handle_cmd(int sock, const uint8_t *payload, uint32_t payload_len)
 	}
 
 	if (cmd.cmd == GET_FLASH_CONFIG) {
-		if (enable_smc_workaround) {
-			xbox_stop_smc();
-		}
+		maybe_stop_smc();
 		uint32_t fc = xbox_get_flash_config();
 		return pfc_send_u32(sock, fc);
 	}
 
 	if (cmd.cmd == READ_FLASH) {
+		maybe_stop_smc();
 		uint8_t buffer[0x210];
 		uint32_t ret = xbox_nand_read_block(cmd.lba, buffer, &buffer[0x200]);
 		if (ret == 0) {
@@ -170,6 +176,7 @@ static int handle_cmd(int sock, const uint8_t *payload, uint32_t payload_len)
 	}
 
 	if (cmd.cmd == WRITE_FLASH) {
+		maybe_stop_smc();
 		if (extra_len != 0x210) {
 			return pfc_send_u32(sock, 0xFFFFFFFFu);
 		}
@@ -178,11 +185,13 @@ static int handle_cmd(int sock, const uint8_t *payload, uint32_t payload_len)
 	}
 
 	if (cmd.cmd == ERASE_FLASH) {
+		maybe_stop_smc();
 		uint32_t ret = xbox_nand_erase_block(cmd.lba);
 		return pfc_send_u32(sock, ret);
 	}
 
 	if (cmd.cmd == READ_FLASH_STREAM) {
+		maybe_stop_smc();
 		uint32_t end = cmd.lba;
 		for (uint32_t i = 0; i < end; i++) {
 			uint8_t buffer[0x210];
@@ -199,35 +208,41 @@ static int handle_cmd(int sock, const uint8_t *payload, uint32_t payload_len)
 	}
 
 	if (cmd.cmd == EMMC_DETECT) {
+		maybe_stop_smc();
 		uint32_t fc = xbox_get_flash_config();
 		uint8_t emmc_detect_result = (fc & 0xF0000000) == 0xC0000000;
 		return pfc_send_bytes(sock, &emmc_detect_result, sizeof(emmc_detect_result));
 	}
 
 	if (cmd.cmd == EMMC_INIT) {
+		maybe_stop_smc();
 		uint32_t ret = (uint32_t)xbox_emmc_init();
 		return pfc_send_u32(sock, ret);
 	}
 
 	if (cmd.cmd == EMMC_GET_CID) {
+		maybe_stop_smc();
 		uint8_t cid_raw[16] = {0};
 		xbox_emmc_read_cid(cid_raw);
 		return pfc_send_frame(sock, PFC_MSG_RESPONSE, cid_raw, sizeof(cid_raw));
 	}
 
 	if (cmd.cmd == EMMC_GET_CSD) {
+		maybe_stop_smc();
 		uint8_t csd_raw[16] = {0};
 		xbox_emmc_read_csd(csd_raw);
 		return pfc_send_frame(sock, PFC_MSG_RESPONSE, csd_raw, sizeof(csd_raw));
 	}
 
 	if (cmd.cmd == EMMC_GET_EXT_CSD) {
+		maybe_stop_smc();
 		uint8_t ext_csd[512];
 		xbox_emmc_read_ext_csd(ext_csd);
 		return pfc_send_frame(sock, PFC_MSG_RESPONSE, ext_csd, sizeof(ext_csd));
 	}
 
 	if (cmd.cmd == EMMC_READ) {
+		maybe_stop_smc();
 		uint8_t buffer[0x200];
 		int ret = xbox_emmc_read_block((int)cmd.lba, buffer);
 		if (ret == 0) {
@@ -237,6 +252,7 @@ static int handle_cmd(int sock, const uint8_t *payload, uint32_t payload_len)
 	}
 
 	if (cmd.cmd == EMMC_READ_STREAM) {
+		maybe_stop_smc();
 		uint32_t end = cmd.lba;
 		for (uint32_t i = 0; i < end; i++) {
 			uint8_t buffer[0x200];
@@ -253,6 +269,7 @@ static int handle_cmd(int sock, const uint8_t *payload, uint32_t payload_len)
 	}
 
 	if (cmd.cmd == EMMC_WRITE) {
+		maybe_stop_smc();
 		if (extra_len != 0x200) {
 			return pfc_send_u32(sock, 0xFFFFFFFFu);
 		}
