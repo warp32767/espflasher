@@ -21,9 +21,6 @@ add_executable(${PROJECT_NAME}
 	usb_descriptors.c
 	spiex.c
 	xbox.c
-	pio_spi.c
-	nuvoton_spi.c
-	isd1200.c
 )
 
 # Create map/bin/hex/uf2 files
@@ -32,16 +29,12 @@ pico_add_extra_outputs(${PROJECT_NAME})
 target_include_directories(${PROJECT_NAME} PUBLIC
         ${CMAKE_CURRENT_LIST_DIR})
 
-pico_generate_pio_header(${PROJECT_NAME} ${CMAKE_CURRENT_LIST_DIR}/spi.pio)
-    
 # Link to pico_stdlib (gpio, time, etc. functions)
 target_link_libraries(${PROJECT_NAME} 
     pico_stdlib
 	tinyusb_device
 	tinyusb_board
-	hardware_pio
 	hardware_spi
-	hardware_dma
 )
 
 # We are not using stdio

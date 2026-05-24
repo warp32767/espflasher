@@ -25,7 +25,6 @@
 
 #include "tusb.h"
 #include "xbox.h"
-#include "isd1200.h"
 #include "pins.h"
 
 #define CDC_PICO_FLASHER 0
@@ -69,16 +68,6 @@ void led_blink(void)
 #define EMMC_READ 0x55
 #define EMMC_READ_STREAM 0x56
 #define EMMC_WRITE 0x57
-
-#define ISD1200_INIT 0xA0
-#define ISD1200_DEINIT 0xA1
-#define ISD1200_READ_ID 0xA2
-#define ISD1200_READ_FLASH 0xA3
-#define ISD1200_ERASE_FLASH 0xA4
-#define ISD1200_WRITE_FLASH 0xA5
-#define ISD1200_PLAY_VOICE 0xA6
-#define ISD1200_EXEC_MACRO 0xA7
-#define ISD1200_RESET 0xA8
 
 #define REBOOT_TO_BOOTLOADER 0xFE
 
@@ -157,8 +146,6 @@ static void pico_flasher_rx_cb(uint8_t cdc_id)
 		tud_cdc_n_peek(cdc_id, &cmd);
 		if (cmd == WRITE_FLASH)
 			needed_data += 0x210;
-		if (cmd == ISD1200_WRITE_FLASH)
-			needed_data += 16;
 	}
 
 	if (avilable_data >= needed_data)
@@ -224,62 +211,6 @@ static void pico_flasher_rx_cb(uint8_t cdc_id)
 		else if (cmd.cmd == START_SMC)
 		{
 			xbox_start_smc();
-		}
-		if (cmd.cmd == ISD1200_INIT)
-		{
-			uint8_t ret = isd1200_init() ? 0 : 1;
-			tud_cdc_n_write(cdc_id, &ret, 1);
-		}
-		if (cmd.cmd == ISD1200_DEINIT)
-		{
-			isd1200_deinit();
-			uint8_t ret = 0;
-			tud_cdc_n_write(cdc_id, &ret, 1);
-		}
-		else if (cmd.cmd == ISD1200_READ_ID)
-		{
-			uint8_t dev_id = isd1200_read_id();
-			tud_cdc_n_write(cdc_id, &dev_id, 1);
-		}
-		else if (cmd.cmd == ISD1200_READ_FLASH)
-		{
-			uint8_t buffer[512];
-			isd1200_flash_read(cmd.lba, buffer);
-			tud_cdc_n_write(cdc_id, buffer, sizeof(buffer));
-		}
-		if (cmd.cmd == ISD1200_ERASE_FLASH)
-		{
-			isd1200_chip_erase();
-			uint8_t ret = 0;
-			tud_cdc_n_write(cdc_id, &ret, 1);
-		}
-		else if (cmd.cmd == ISD1200_WRITE_FLASH)
-		{
-			uint8_t buffer[16];
-			uint32_t count = tud_cdc_n_read(cdc_id, &buffer, sizeof(buffer));
-			if (count != sizeof(buffer))
-				return;
-			isd1200_flash_write(cmd.lba, buffer);
-			uint32_t ret = 0;
-			tud_cdc_n_write(cdc_id, &ret, 4);
-		}
-		else if (cmd.cmd == ISD1200_PLAY_VOICE)
-		{
-			isd1200_play_vp(cmd.lba);
-			uint8_t ret = 0;
-			tud_cdc_n_write(cdc_id, &ret, 1);
-		}
-		else if (cmd.cmd == ISD1200_EXEC_MACRO)
-		{
-			isd1200_exe_vm(cmd.lba);
-			uint8_t ret = 0;
-			tud_cdc_n_write(cdc_id, &ret, 1);
-		}
-		if (cmd.cmd == ISD1200_RESET)
-		{
-			isd1200_reset();
-			uint8_t ret = 0;
-			tud_cdc_n_write(cdc_id, &ret, 1);
 		}
 		else if (cmd.cmd == REBOOT_TO_BOOTLOADER)
 		{
