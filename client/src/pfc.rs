@@ -13,10 +13,12 @@ const PFC_MSG_RESPONSE: u16 = 1;
 pub const CMD_GET_VERSION: u8 = 0x00;
 pub const CMD_GET_FLASH_CONFIG: u8 = 0x01;
 pub const CMD_READ_FLASH: u8 = 0x02;
+#[allow(dead_code)]
 pub const CMD_WRITE_FLASH: u8 = 0x03;
 pub const CMD_READ_FLASH_STREAM: u8 = 0x04;
 #[allow(dead_code)]
 pub const CMD_ERASE_FLASH: u8 = 0x05;
+pub const CMD_WRITE_FLASH_MULTI: u8 = 0x06;
 
 pub const CMD_SET_SMC_WORKAROUND: u8 = 0x20;
 pub const CMD_STOP_SMC: u8 = 0x21;
@@ -32,7 +34,9 @@ pub const CMD_EMMC_GET_CSD: u8 = 0x53;
 pub const CMD_EMMC_GET_EXT_CSD: u8 = 0x54;
 pub const CMD_EMMC_READ: u8 = 0x55;
 pub const CMD_EMMC_READ_STREAM: u8 = 0x56;
+#[allow(dead_code)]
 pub const CMD_EMMC_WRITE: u8 = 0x57;
+pub const CMD_EMMC_WRITE_MULTI: u8 = 0x58;
 
 #[derive(Debug, Clone)]
 pub struct Frame {
@@ -91,6 +95,7 @@ impl Client {
 		self.recv_response()
 	}
 
+	#[allow(dead_code)]
 	pub fn send_cmd(&mut self, cmd: u8, lba: u32, extra: &[u8]) -> Result<()> {
 		let mut payload = Vec::with_capacity(5 + extra.len());
 		payload.push(cmd);

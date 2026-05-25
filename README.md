@@ -54,3 +54,5 @@ For simple debug output from SMC firmware, it is enough to only wire up SMC_DBG_
 - balika011 for the original PicoFlasher
 - 15432 for eMMC SPI support
 - Hax360 for overhauling the project
+- ExposureMG for ESP32 support
+- warp32767 for testing and POST reading

@@ -95,7 +95,7 @@ uint32_t spiex_read_reg(uint8_t reg)
 	t.length = sizeof(txbuf) * 8;
 	t.tx_buffer = txbuf;
 	t.rx_buffer = rxbuf;
-	ESP_ERROR_CHECK(spi_device_transmit(pfc_spi_dev, &t));
+	ESP_ERROR_CHECK(spi_device_polling_transmit(pfc_spi_dev, &t));
 
 	gpio_set_level(SPI_SS_N, 1);
 
@@ -124,7 +124,7 @@ void spiex_write_reg(uint8_t reg, uint32_t val)
 	memset(&t, 0, sizeof(t));
 	t.length = sizeof(txbuf) * 8;
 	t.tx_buffer = txbuf;
-	ESP_ERROR_CHECK(spi_device_transmit(pfc_spi_dev, &t));
+	ESP_ERROR_CHECK(spi_device_polling_transmit(pfc_spi_dev, &t));
 
 	gpio_set_level(SPI_SS_N, 1);
 }

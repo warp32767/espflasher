@@ -11,8 +11,9 @@ use clap::Parser;
 use crate::cli::{Cli, Command};
 use crate::pfc::{
 	cmd_payload, Client, CMD_EMMC_DETECT, CMD_EMMC_GET_EXT_CSD, CMD_EMMC_INIT, CMD_EMMC_READ,
-	CMD_EMMC_READ_STREAM, CMD_EMMC_WRITE, CMD_GET_FLASH_CONFIG, CMD_GET_VERSION,
-	CMD_READ_FLASH, CMD_READ_FLASH_STREAM, CMD_SET_SMC_WORKAROUND, CMD_STOP_SMC, CMD_WRITE_FLASH,
+	CMD_EMMC_READ_STREAM, CMD_EMMC_WRITE_MULTI, CMD_GET_FLASH_CONFIG,
+	CMD_GET_VERSION, CMD_READ_FLASH, CMD_READ_FLASH_STREAM, CMD_SET_SMC_WORKAROUND, CMD_STOP_SMC,
+	CMD_WRITE_FLASH_MULTI,
 };
 
 fn main() -> Result<()> {
@@ -166,24 +167,33 @@ fn write_nand(client: &mut Client, input: std::path::PathBuf, start: u32) -> Res
 	}
 
 	let blocks = (buf.len() / 0x210) as u32;
-	for i in 0..blocks {
+	let mut i = 0u32;
+	while i < blocks {
+		let remaining = blocks - i;
+		let chunk_blocks = remaining.min(8);
 		let lba = start + i;
+
+		let mut payload = Vec::with_capacity(5 + 2 + (chunk_blocks as usize) * 0x210);
+		payload.push(CMD_WRITE_FLASH_MULTI);
+		payload.extend_from_slice(&lba.to_le_bytes());
+		payload.extend_from_slice(&(chunk_blocks as u16).to_le_bytes());
 		let off = (i as usize) * 0x210;
-		let chunk = &buf[off..off + 0x210];
+		let end = off + (chunk_blocks as usize) * 0x210;
+		payload.extend_from_slice(&buf[off..end]);
 
-		client.send_cmd(CMD_WRITE_FLASH, lba, chunk)?;
+		client.send_request(&payload)?;
 		let frame = client.recv_response()?;
-		if frame.payload.len() != 4 {
-			bail!("expected 4-byte response at lba {lba}, got {}", frame.payload.len());
+		if frame.payload.len() != 8 {
+			bail!("expected 8-byte response at lba {lba}, got {}", frame.payload.len());
 		}
-		let ret = u32::from_le_bytes(frame.payload[..4].try_into().unwrap());
+		let ret = u32::from_le_bytes(frame.payload[0..4].try_into().unwrap());
+		let idx = u32::from_le_bytes(frame.payload[4..8].try_into().unwrap());
 		if ret != 0 {
-			bail!("write failed at lba {lba}: 0x{ret:08x}");
+			bail!("write failed at lba {}: 0x{ret:08x}", lba + idx);
 		}
 
-		if (i & 0xFF) == 0 {
-			eprintln!("written {}/{} blocks", i + 1, blocks);
-		}
+		i += chunk_blocks;
+		eprintln!("written {}/{} blocks", i, blocks);
 	}
 
 	Ok(())
@@ -277,24 +287,33 @@ fn write_emmc(client: &mut Client, input: std::path::PathBuf, start: u32) -> Res
 	}
 
 	let blocks = (buf.len() / 0x200) as u32;
-	for i in 0..blocks {
+	let mut i = 0u32;
+	while i < blocks {
+		let remaining = blocks - i;
+		let chunk_blocks = remaining.min(16);
 		let lba = start + i;
+
+		let mut payload = Vec::with_capacity(5 + 2 + (chunk_blocks as usize) * 0x200);
+		payload.push(CMD_EMMC_WRITE_MULTI);
+		payload.extend_from_slice(&lba.to_le_bytes());
+		payload.extend_from_slice(&(chunk_blocks as u16).to_le_bytes());
 		let off = (i as usize) * 0x200;
-		let chunk = &buf[off..off + 0x200];
+		let end = off + (chunk_blocks as usize) * 0x200;
+		payload.extend_from_slice(&buf[off..end]);
 
-		client.send_cmd(CMD_EMMC_WRITE, lba, chunk)?;
+		client.send_request(&payload)?;
 		let frame = client.recv_response()?;
-		if frame.payload.len() != 4 {
-			bail!("expected 4-byte response at lba {lba}, got {}", frame.payload.len());
+		if frame.payload.len() != 8 {
+			bail!("expected 8-byte response at lba {lba}, got {}", frame.payload.len());
 		}
-		let ret = u32::from_le_bytes(frame.payload[..4].try_into().unwrap());
+		let ret = u32::from_le_bytes(frame.payload[0..4].try_into().unwrap());
+		let idx = u32::from_le_bytes(frame.payload[4..8].try_into().unwrap());
 		if ret != 0 {
-			bail!("write failed at lba {lba}: {ret}");
+			bail!("write failed at lba {}: {ret}", lba + idx);
 		}
 
-		if (i & 0xFF) == 0 {
-			eprintln!("written {}/{} blocks", i + 1, blocks);
-		}
+		i += chunk_blocks;
+		eprintln!("written {}/{} blocks", i, blocks);
 	}
 
 	Ok(())

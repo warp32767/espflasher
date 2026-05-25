@@ -19,6 +19,7 @@
 #define WRITE_FLASH 0x03
 #define READ_FLASH_STREAM 0x04
 #define ERASE_FLASH 0x05
+#define WRITE_FLASH_MULTI 0x06
 
 #define SET_SMC_WORKAROUND 0x20
 #define STOP_SMC 0x21
@@ -32,9 +33,12 @@
 #define EMMC_READ 0x55
 #define EMMC_READ_STREAM 0x56
 #define EMMC_WRITE 0x57
+#define EMMC_WRITE_MULTI 0x58
 
 #define PFC_TCP_PORT 3232
-#define PFC_MAX_PAYLOAD 1024
+#define PFC_MAX_PAYLOAD 8192
+#define PFC_NAND_BLOCK_BYTES 0x210
+#define PFC_EMMC_BLOCK_BYTES 0x200
 
 static const char *TAG = "pfc";
 
@@ -107,15 +111,23 @@ static int pfc_send_bytes(int sock, const void *data, uint32_t data_len)
 
 static int pfc_send_u32_with_data(int sock, uint32_t v, const void *data, uint32_t data_len)
 {
-	uint8_t tmp[4 + PFC_MAX_PAYLOAD];
-	if (data_len > PFC_MAX_PAYLOAD) {
+	pfc_hdr_t hdr = {
+		.magic = PFC_MAGIC,
+		.version = PFC_VERSION,
+		.type = PFC_MSG_RESPONSE,
+		.length = 4 + data_len,
+	};
+
+	if (send_all(sock, &hdr, sizeof(hdr))) {
 		return -1;
 	}
-	memcpy(tmp, &v, 4);
-	if (data_len) {
-		memcpy(tmp + 4, data, data_len);
+	if (send_all(sock, &v, 4)) {
+		return -1;
 	}
-	return pfc_send_frame(sock, PFC_MSG_RESPONSE, tmp, 4 + data_len);
+	if (data_len && send_all(sock, data, data_len)) {
+		return -1;
+	}
+	return 0;
 }
 
 static bool enable_smc_workaround = true;
@@ -167,7 +179,7 @@ static int handle_cmd(int sock, const uint8_t *payload, uint32_t payload_len)
 
 	if (cmd.cmd == READ_FLASH) {
 		maybe_stop_smc();
-		uint8_t buffer[0x210];
+		uint8_t buffer[PFC_NAND_BLOCK_BYTES];
 		uint32_t ret = xbox_nand_read_block(cmd.lba, buffer, &buffer[0x200]);
 		if (ret == 0) {
 			return pfc_send_u32_with_data(sock, ret, buffer, sizeof(buffer));
@@ -177,11 +189,40 @@ static int handle_cmd(int sock, const uint8_t *payload, uint32_t payload_len)
 
 	if (cmd.cmd == WRITE_FLASH) {
 		maybe_stop_smc();
-		if (extra_len != 0x210) {
+		if (extra_len != PFC_NAND_BLOCK_BYTES) {
 			return pfc_send_u32(sock, 0xFFFFFFFFu);
 		}
 		uint32_t ret = xbox_nand_write_block(cmd.lba, (uint8_t *)extra, (uint8_t *)(extra + 0x200));
 		return pfc_send_u32(sock, ret);
+	}
+
+	if (cmd.cmd == WRITE_FLASH_MULTI) {
+		maybe_stop_smc();
+		if (extra_len < 2) {
+			return pfc_send_u32(sock, 0xFFFFFFFFu);
+		}
+		uint16_t count;
+		memcpy(&count, extra, sizeof(count));
+		const uint8_t *data = extra + 2;
+		uint32_t data_len = extra_len - 2;
+		if (count == 0) {
+			return pfc_send_u32(sock, 0);
+		}
+		if (data_len != (uint32_t)count * PFC_NAND_BLOCK_BYTES) {
+			return pfc_send_u32(sock, 0xFFFFFFFFu);
+		}
+		for (uint16_t i = 0; i < count; i++) {
+			const uint8_t *blk = data + (uint32_t)i * PFC_NAND_BLOCK_BYTES;
+			uint32_t ret = xbox_nand_write_block(cmd.lba + i, (uint8_t *)blk, (uint8_t *)(blk + 0x200));
+			if (ret != 0) {
+				uint32_t resp[2] = {ret, i};
+				return pfc_send_bytes(sock, resp, sizeof(resp));
+			}
+		}
+		{
+			uint32_t resp[2] = {0, count};
+			return pfc_send_bytes(sock, resp, sizeof(resp));
+		}
 	}
 
 	if (cmd.cmd == ERASE_FLASH) {
@@ -194,7 +235,7 @@ static int handle_cmd(int sock, const uint8_t *payload, uint32_t payload_len)
 		maybe_stop_smc();
 		uint32_t end = cmd.lba;
 		for (uint32_t i = 0; i < end; i++) {
-			uint8_t buffer[0x210];
+			uint8_t buffer[PFC_NAND_BLOCK_BYTES];
 			uint32_t ret = xbox_nand_read_block(i, buffer, &buffer[0x200]);
 			if (ret == 0) {
 				if (pfc_send_u32_with_data(sock, ret, buffer, sizeof(buffer))) {
@@ -243,7 +284,7 @@ static int handle_cmd(int sock, const uint8_t *payload, uint32_t payload_len)
 
 	if (cmd.cmd == EMMC_READ) {
 		maybe_stop_smc();
-		uint8_t buffer[0x200];
+		uint8_t buffer[PFC_EMMC_BLOCK_BYTES];
 		int ret = xbox_emmc_read_block((int)cmd.lba, buffer);
 		if (ret == 0) {
 			return pfc_send_u32_with_data(sock, (uint32_t)ret, buffer, sizeof(buffer));
@@ -255,7 +296,7 @@ static int handle_cmd(int sock, const uint8_t *payload, uint32_t payload_len)
 		maybe_stop_smc();
 		uint32_t end = cmd.lba;
 		for (uint32_t i = 0; i < end; i++) {
-			uint8_t buffer[0x200];
+			uint8_t buffer[PFC_EMMC_BLOCK_BYTES];
 			int ret = xbox_emmc_read_block((int)i, buffer);
 			if (ret == 0) {
 				if (pfc_send_u32_with_data(sock, (uint32_t)ret, buffer, sizeof(buffer))) {
@@ -270,11 +311,40 @@ static int handle_cmd(int sock, const uint8_t *payload, uint32_t payload_len)
 
 	if (cmd.cmd == EMMC_WRITE) {
 		maybe_stop_smc();
-		if (extra_len != 0x200) {
+		if (extra_len != PFC_EMMC_BLOCK_BYTES) {
 			return pfc_send_u32(sock, 0xFFFFFFFFu);
 		}
 		uint32_t ret = (uint32_t)xbox_emmc_write_block((int)cmd.lba, (uint8_t *)extra);
 		return pfc_send_u32(sock, ret);
+	}
+
+	if (cmd.cmd == EMMC_WRITE_MULTI) {
+		maybe_stop_smc();
+		if (extra_len < 2) {
+			return pfc_send_u32(sock, 0xFFFFFFFFu);
+		}
+		uint16_t count;
+		memcpy(&count, extra, sizeof(count));
+		const uint8_t *data = extra + 2;
+		uint32_t data_len = extra_len - 2;
+		if (count == 0) {
+			return pfc_send_u32(sock, 0);
+		}
+		if (data_len != (uint32_t)count * PFC_EMMC_BLOCK_BYTES) {
+			return pfc_send_u32(sock, 0xFFFFFFFFu);
+		}
+		for (uint16_t i = 0; i < count; i++) {
+			const uint8_t *blk = data + (uint32_t)i * PFC_EMMC_BLOCK_BYTES;
+			uint32_t ret = (uint32_t)xbox_emmc_write_block((int)(cmd.lba + i), (uint8_t *)blk);
+			if (ret != 0) {
+				uint32_t resp[2] = {ret, i};
+				return pfc_send_bytes(sock, resp, sizeof(resp));
+			}
+		}
+		{
+			uint32_t resp[2] = {0, count};
+			return pfc_send_bytes(sock, resp, sizeof(resp));
+		}
 	}
 
 	return pfc_send_u32(sock, 0xFFFFFFFFu);
@@ -282,30 +352,35 @@ static int handle_cmd(int sock, const uint8_t *payload, uint32_t payload_len)
 
 static void handle_client(int sock)
 {
-	uint8_t payload[PFC_MAX_PAYLOAD];
+	uint8_t *payload = malloc(PFC_MAX_PAYLOAD);
+	if (!payload) {
+		return;
+	}
 
 	while (1) {
 		pfc_hdr_t hdr;
 		if (recv_all(sock, &hdr, sizeof(hdr))) {
-			return;
+			break;
 		}
 
 		if (hdr.magic != PFC_MAGIC || hdr.version != PFC_VERSION || hdr.type != PFC_MSG_REQUEST) {
-			return;
+			break;
 		}
 
 		if (hdr.length > PFC_MAX_PAYLOAD) {
-			return;
+			break;
 		}
 
 		if (hdr.length && recv_all(sock, payload, hdr.length)) {
-			return;
+			break;
 		}
 
 		if (handle_cmd(sock, payload, hdr.length)) {
-			return;
+			break;
 		}
 	}
+
+	free(payload);
 }
 
 static void pfc_server_task(void *arg)
