@@ -7,6 +7,7 @@
 
 #include "lwip/inet.h"
 #include "lwip/sockets.h"
+#include "lwip/tcp.h"
 
 #include "esp_log.h"
 
@@ -118,10 +119,11 @@ static int pfc_send_u32_with_data(int sock, uint32_t v, const void *data, uint32
 		.length = 4 + data_len,
 	};
 
-	if (send_all(sock, &hdr, sizeof(hdr))) {
-		return -1;
-	}
-	if (send_all(sock, &v, 4)) {
+	uint8_t head[sizeof(pfc_hdr_t) + 4];
+	memcpy(head, &hdr, sizeof(hdr));
+	memcpy(head + sizeof(hdr), &v, 4);
+
+	if (send_all(sock, head, sizeof(head))) {
 		return -1;
 	}
 	if (data_len && send_all(sock, data, data_len)) {
@@ -423,6 +425,17 @@ static void pfc_server_task(void *arg)
 		int sock = accept(listen_sock, (struct sockaddr *)&source_addr, &addr_len);
 		if (sock < 0) {
 			continue;
+		}
+
+		{
+			int one = 1;
+			setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
+
+			int snd = 16 * 1024;
+			setsockopt(sock, SOL_SOCKET, SO_SNDBUF, &snd, sizeof(snd));
+
+			int rcv = 16 * 1024;
+			setsockopt(sock, SOL_SOCKET, SO_RCVBUF, &rcv, sizeof(rcv));
 		}
 
 		ESP_LOGI(TAG, "client connected");
