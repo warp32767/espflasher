@@ -3,3 +3,5 @@ errors.log
 target
 debug
 Cargo.lock
+.pio
+.DS_Store
