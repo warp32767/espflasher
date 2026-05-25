@@ -16,7 +16,7 @@ Open source XBOX 360 NAND flasher firmware for ESP32
 | 22 | SMC_RST_XDK_N  |
 | GND   | GND            |
 
-### POST reading
+### POST reading (not implemented yet)
 
 | ESP32  | Xbox           |
 | ----- | -------------- |
@@ -30,14 +30,14 @@ Open source XBOX 360 NAND flasher firmware for ESP32
 |   | POST bit 7     |
 | GND   | GND            |
 
-### Kernel Debug UART
+### Kernel Debug UART (not implemented yet)
 
 | Pico           | Xbox          |
 | ---------------| ------------- |
 |  (UART0_TX) | KER_DBG_RXD   |
 |  (UART0_RX) | KER_DBG_TXD   |
 
-### SMC Debug UART
+### SMC Debug UART (not implemented yet)
 
 There is a second debug UART in the Southbridge that can be used by the SMC firmware to read/write bytes.
 On most Retail PCBs only the TX pin is actually wired to to the debug headers, but RX can be accessed with

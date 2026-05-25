@@ -5,3 +5,4 @@ debug
 Cargo.lock
 .pio
 .DS_Store
+.cache

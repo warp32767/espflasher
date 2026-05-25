@@ -14,7 +14,7 @@ jobs:
     defaults:
       run:
         shell: bash
-        working-directory: esp32
+        working-directory: src
     steps:
       - uses: actions/checkout@v4
 
@@ -30,8 +30,8 @@ jobs:
         with:
           name: esp32-build
           path: |
-            esp32/build/*.bin
-            esp32/build/*.elf
-            esp32/build/*.map
-            esp32/build/bootloader/*.bin
-            esp32/build/partition_table/*.bin
+            src/build/*.bin
+            src/build/*.elf
+            src/build/*.map
+            src/build/bootloader/*.bin
+            src/build/partition_table/*.bin
