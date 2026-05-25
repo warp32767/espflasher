@@ -15,15 +15,19 @@ pub const CMD_GET_FLASH_CONFIG: u8 = 0x01;
 pub const CMD_READ_FLASH: u8 = 0x02;
 pub const CMD_WRITE_FLASH: u8 = 0x03;
 pub const CMD_READ_FLASH_STREAM: u8 = 0x04;
+#[allow(dead_code)]
 pub const CMD_ERASE_FLASH: u8 = 0x05;
 
 pub const CMD_SET_SMC_WORKAROUND: u8 = 0x20;
 pub const CMD_STOP_SMC: u8 = 0x21;
+#[allow(dead_code)]
 pub const CMD_START_SMC: u8 = 0x22;
 
 pub const CMD_EMMC_DETECT: u8 = 0x50;
 pub const CMD_EMMC_INIT: u8 = 0x51;
+#[allow(dead_code)]
 pub const CMD_EMMC_GET_CID: u8 = 0x52;
+#[allow(dead_code)]
 pub const CMD_EMMC_GET_CSD: u8 = 0x53;
 pub const CMD_EMMC_GET_EXT_CSD: u8 = 0x54;
 pub const CMD_EMMC_READ: u8 = 0x55;
@@ -103,6 +107,7 @@ impl Client {
 		Ok(u32::from_le_bytes(frame.payload[..4].try_into().unwrap()))
 	}
 
+	#[allow(dead_code)]
 	pub fn cmd_bytes(&mut self, cmd: u8, lba: u32) -> Result<Vec<u8>> {
 		let frame = self.request_response(&cmd_payload(cmd, lba))?;
 		Ok(frame.payload)

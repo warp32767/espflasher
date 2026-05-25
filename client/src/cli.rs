@@ -6,7 +6,7 @@ use clap::{Parser, Subcommand};
 #[command(name = "picoclient")]
 #[command(about = "TCP client for PicoFlasher ESP32 server", long_about = None)]
 pub struct Cli {
-	#[arg(long = "ip", alias = "addr", default_value = "192.168.4.255:3232")]
+	#[arg(long = "ip", alias = "addr", default_value = "192.168.4.1:3232")]
 	pub addr: String,
 
 	#[arg(long, default_value = "3000")]
@@ -18,78 +18,41 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Command {
-	GetVersion,
-	StopSmc,
-	StartSmc,
-	GetFlashConfig,
-
-	NandRead {
-		#[arg(long)]
-		lba: u32,
-
+	ReadNand {
 		#[arg(long)]
 		out: PathBuf,
-	},
 
-	NandWrite {
-		#[arg(long)]
-		lba: u32,
-
-		#[arg(long)]
-		input: PathBuf,
-	},
-
-	NandDump {
-		#[arg(long)]
+		#[arg(long, default_value_t = 0)]
 		start: u32,
 
 		#[arg(long)]
-		count: u32,
+		count: Option<u32>,
+	},
 
+	WriteNand {
+		#[arg(long)]
+		input: PathBuf,
+
+		#[arg(long, default_value_t = 0)]
+		start: u32,
+	},
+
+	ReadEmmc {
 		#[arg(long)]
 		out: PathBuf,
 
-		#[arg(long, default_value_t = false)]
-		use_stream: bool,
-	},
-
-	NandFlash {
-		#[arg(long)]
+		#[arg(long, default_value_t = 0)]
 		start: u32,
 
 		#[arg(long)]
-		input: PathBuf,
+		count: Option<u32>,
 	},
 
-	EmmcDetect,
-	EmmcInit,
-	EmmcRead {
-		#[arg(long)]
-		lba: u32,
-
-		#[arg(long)]
-		out: PathBuf,
-	},
-
-	EmmcWrite {
-		#[arg(long)]
-		lba: u32,
-
+	WriteEmmc {
 		#[arg(long)]
 		input: PathBuf,
-	},
 
-	EmmcDump {
-		#[arg(long)]
+		#[arg(long, default_value_t = 0)]
 		start: u32,
-
-		#[arg(long)]
-		count: u32,
-
-		#[arg(long)]
-		out: PathBuf,
-
-		#[arg(long, default_value_t = false)]
-		use_stream: bool,
 	},
 }

@@ -10,9 +10,9 @@ use clap::Parser;
 
 use crate::cli::{Cli, Command};
 use crate::pfc::{
-	cmd_payload, Client, CMD_EMMC_DETECT, CMD_EMMC_INIT, CMD_EMMC_READ, CMD_EMMC_READ_STREAM,
-	CMD_EMMC_WRITE, CMD_GET_FLASH_CONFIG, CMD_GET_VERSION, CMD_READ_FLASH, CMD_READ_FLASH_STREAM,
-	CMD_START_SMC, CMD_STOP_SMC, CMD_WRITE_FLASH,
+	cmd_payload, Client, CMD_EMMC_DETECT, CMD_EMMC_GET_EXT_CSD, CMD_EMMC_INIT, CMD_EMMC_READ,
+	CMD_EMMC_READ_STREAM, CMD_EMMC_WRITE, CMD_GET_FLASH_CONFIG, CMD_GET_VERSION,
+	CMD_READ_FLASH, CMD_READ_FLASH_STREAM, CMD_SET_SMC_WORKAROUND, CMD_STOP_SMC, CMD_WRITE_FLASH,
 };
 
 fn main() -> Result<()> {
@@ -24,228 +24,276 @@ fn main() -> Result<()> {
 	eprintln!("connected to {resolved}");
 
 	match cli.command {
-		Command::GetVersion => {
-			let ver = client.cmd_u32(CMD_GET_VERSION, 0)?;
-			println!("{ver}");
-		}
-		Command::StopSmc => {
-			client.request_response(&cmd_payload(CMD_STOP_SMC, 0))?;
+		Command::ReadNand { out, start, count } => {
+			let (flash_config, blocks_total) = prepare_nand(&mut client)?;
+			let blocks = count.unwrap_or(blocks_total.saturating_sub(start));
+			eprintln!("flash_config=0x{flash_config:08x} blocks={blocks} start={start}");
+			read_nand(&mut client, out, start, blocks)?;
 			println!("ok");
 		}
-		Command::StartSmc => {
-			client.request_response(&cmd_payload(CMD_START_SMC, 0))?;
+		Command::WriteNand { input, start } => {
+			let (flash_config, blocks_total) = prepare_nand(&mut client)?;
+			eprintln!("flash_config=0x{flash_config:08x} start={start} max_blocks={blocks_total}");
+			write_nand(&mut client, input, start)?;
 			println!("ok");
 		}
-		Command::GetFlashConfig => {
-			let fc = client.cmd_u32(CMD_GET_FLASH_CONFIG, 0)?;
-			println!("0x{fc:08x}");
+		Command::ReadEmmc { out, start, count } => {
+			let blocks_total = prepare_emmc(&mut client)?;
+			let blocks = count.unwrap_or(blocks_total.saturating_sub(start));
+			eprintln!("emmc_blocks={blocks} start={start}");
+			read_emmc(&mut client, out, start, blocks)?;
+			println!("ok");
 		}
-		Command::NandRead { lba, out } => {
-			let frame = client.request_response(&cmd_payload(CMD_READ_FLASH, lba))?;
+		Command::WriteEmmc { input, start } => {
+			let blocks_total = prepare_emmc(&mut client)?;
+			eprintln!("start={start} max_blocks={blocks_total}");
+			write_emmc(&mut client, input, start)?;
+			println!("ok");
+		}
+	}
+
+	Ok(())
+}
+
+fn prepare_nand(client: &mut Client) -> Result<(u32, u32)> {
+	let _ver = client.cmd_u32(CMD_GET_VERSION, 0)?;
+	let _ = client.cmd_u32(CMD_SET_SMC_WORKAROUND, 0)?;
+	client.request_response(&cmd_payload(CMD_STOP_SMC, 0))?;
+	std::thread::sleep(Duration::from_millis(500));
+
+	let flash_config = client.cmd_u32(CMD_GET_FLASH_CONFIG, 0)?;
+	if flash_config == 0 || flash_config == 0xFFFF_FFFF {
+		bail!("console not found (flash_config=0x{flash_config:08x})");
+	}
+
+	let flash_size_bytes = flash_size_from_config(flash_config)
+		.ok_or_else(|| anyhow::anyhow!("unknown flash size for flash_config=0x{flash_config:08x}"))?;
+	let blocks = (flash_size_bytes / 512) as u32;
+	Ok((flash_config, blocks))
+}
+
+fn flash_size_from_config(flash_config: u32) -> Option<usize> {
+	let major = (flash_config >> 17) & 3;
+	let minor = (flash_config >> 4) & 3;
+
+	let size_mb = if major >= 1 {
+		match minor {
+			0 => {
+				if major != 1 {
+					16
+				} else {
+					return None;
+				}
+			}
+			1 => {
+				if major != 1 {
+					64
+				} else {
+					16
+				}
+			}
+			2 | 3 => {
+				let a = (flash_config >> 19) & 0x3;
+				let b = (flash_config >> 21) & 0xF;
+				8usize.checked_shl((a + b) as u32)?
+			}
+			_ => return None,
+		}
+	} else {
+		8usize.checked_shl(minor as u32)?
+	};
+
+	Some(size_mb * 1024 * 1024)
+}
+
+fn read_nand(client: &mut Client, out: std::path::PathBuf, start: u32, count: u32) -> Result<()> {
+	let mut f = File::create(out).context("open output")?;
+
+	if start == 0 {
+		client.send_request(&cmd_payload(CMD_READ_FLASH_STREAM, count))?;
+		for i in 0..count {
+			let frame = client.recv_response()?;
 			if frame.payload.len() < 4 {
-				bail!("short response");
+				bail!("short response at block {i}");
 			}
 			let ret = u32::from_le_bytes(frame.payload[0..4].try_into().unwrap());
 			if ret != 0 {
-				bail!("read failed: 0x{ret:08x}");
+				bail!("read failed at block {i}: 0x{ret:08x}");
 			}
 			if frame.payload.len() != 4 + 0x210 {
-				bail!("expected {} bytes, got {}", 4 + 0x210, frame.payload.len());
+				bail!("bad payload size at block {i}: {}", frame.payload.len());
 			}
-			let mut f = File::create(out).context("open output")?;
 			f.write_all(&frame.payload[4..]).context("write output")?;
-			println!("ok");
-		}
-		Command::NandWrite { lba, input } => {
-			let mut buf = vec![];
-			File::open(input)
-				.context("open input")?
-				.read_to_end(&mut buf)
-				.context("read input")?;
-			if buf.len() != 0x210 {
-				bail!("expected 0x210 bytes input, got 0x{:x}", buf.len());
-			}
 
-			client.send_cmd(CMD_WRITE_FLASH, lba, &buf)?;
-			let frame = client.recv_response()?;
-			if frame.payload.len() != 4 {
-				bail!("expected 4-byte response, got {}", frame.payload.len());
+			if (i & 0xFF) == 0 {
+				eprintln!("read {}/{} blocks", i + 1, count);
 			}
-			let ret = u32::from_le_bytes(frame.payload[..4].try_into().unwrap());
-			if ret != 0 {
-				bail!("write failed: 0x{ret:08x}");
-			}
-			println!("ok");
 		}
-		Command::NandDump {
-			start,
-			count,
-			out,
-			use_stream,
-		} => {
-			let mut f = File::create(out).context("open output")?;
-			if use_stream {
-				if start != 0 {
-					bail!("stream mode only supports start=0 with current ESP server");
-				}
-				client.send_request(&cmd_payload(CMD_READ_FLASH_STREAM, count))?;
-				for i in 0..count {
-					let frame = client.recv_response()?;
-					if frame.payload.len() < 4 {
-						bail!("short response at block {i}");
-					}
-					let ret = u32::from_le_bytes(frame.payload[0..4].try_into().unwrap());
-					if ret != 0 {
-						bail!("read failed at block {i}: 0x{ret:08x}");
-					}
-					if frame.payload.len() != 4 + 0x210 {
-						bail!("bad payload size at block {i}: {}", frame.payload.len());
-					}
-					f.write_all(&frame.payload[4..]).context("write output")?;
-				}
-			} else {
-				for i in 0..count {
-					let lba = start + i;
-					let frame = client.request_response(&cmd_payload(CMD_READ_FLASH, lba))?;
-					if frame.payload.len() < 4 {
-						bail!("short response at lba {lba}");
-					}
-					let ret = u32::from_le_bytes(frame.payload[0..4].try_into().unwrap());
-					if ret != 0 {
-						bail!("read failed at lba {lba}: 0x{ret:08x}");
-					}
-					if frame.payload.len() != 4 + 0x210 {
-						bail!("bad payload size at lba {lba}: {}", frame.payload.len());
-					}
-					f.write_all(&frame.payload[4..]).context("write output")?;
-				}
-			}
-			println!("ok");
-		}
-		Command::NandFlash { start, input } => {
-			let mut f = File::open(input).context("open input")?;
-			let mut buf = vec![];
-			f.read_to_end(&mut buf).context("read input")?;
-
-			if buf.len() % 0x210 != 0 {
-				bail!("input size must be a multiple of 0x210 (got 0x{:x})", buf.len());
-			}
-
-			let blocks = (buf.len() / 0x210) as u32;
-			for i in 0..blocks {
-				let lba = start + i;
-				let off = (i as usize) * 0x210;
-				let chunk = &buf[off..off + 0x210];
-
-				client.send_cmd(CMD_WRITE_FLASH, lba, chunk)?;
-				let frame = client.recv_response()?;
-				if frame.payload.len() != 4 {
-					bail!("expected 4-byte response at lba {lba}, got {}", frame.payload.len());
-				}
-				let ret = u32::from_le_bytes(frame.payload[..4].try_into().unwrap());
-				if ret != 0 {
-					bail!("write failed at lba {lba}: 0x{ret:08x}");
-				}
-
-				if (i & 0xFF) == 0 {
-					eprintln!("written {}/{} blocks", i + 1, blocks);
-				}
-			}
-
-			println!("ok");
-		}
-		Command::EmmcDetect => {
-			let frame = client.request_response(&cmd_payload(CMD_EMMC_DETECT, 0))?;
-			if frame.payload.len() != 1 {
-				bail!("expected 1-byte response, got {}", frame.payload.len());
-			}
-			println!("{}", frame.payload[0]);
-		}
-		Command::EmmcInit => {
-			let ret = client.cmd_u32(CMD_EMMC_INIT, 0)?;
-			println!("{ret}");
-		}
-		Command::EmmcRead { lba, out } => {
-			let frame = client.request_response(&cmd_payload(CMD_EMMC_READ, lba))?;
+	} else {
+		for i in 0..count {
+			let lba = start + i;
+			let frame = client.request_response(&cmd_payload(CMD_READ_FLASH, lba))?;
 			if frame.payload.len() < 4 {
-				bail!("short response");
+				bail!("short response at lba {lba}");
 			}
 			let ret = u32::from_le_bytes(frame.payload[0..4].try_into().unwrap());
 			if ret != 0 {
-				bail!("read failed: {ret}");
+				bail!("read failed at lba {lba}: 0x{ret:08x}");
+			}
+			if frame.payload.len() != 4 + 0x210 {
+				bail!("bad payload size at lba {lba}: {}", frame.payload.len());
+			}
+			f.write_all(&frame.payload[4..]).context("write output")?;
+
+			if (i & 0xFF) == 0 {
+				eprintln!("read {}/{} blocks", i + 1, count);
+			}
+		}
+	}
+
+	Ok(())
+}
+
+fn write_nand(client: &mut Client, input: std::path::PathBuf, start: u32) -> Result<()> {
+	let mut buf = vec![];
+	File::open(input)
+		.context("open input")?
+		.read_to_end(&mut buf)
+		.context("read input")?;
+
+	if buf.len() % 0x210 != 0 {
+		bail!("input size must be a multiple of 0x210 (got 0x{:x})", buf.len());
+	}
+
+	let blocks = (buf.len() / 0x210) as u32;
+	for i in 0..blocks {
+		let lba = start + i;
+		let off = (i as usize) * 0x210;
+		let chunk = &buf[off..off + 0x210];
+
+		client.send_cmd(CMD_WRITE_FLASH, lba, chunk)?;
+		let frame = client.recv_response()?;
+		if frame.payload.len() != 4 {
+			bail!("expected 4-byte response at lba {lba}, got {}", frame.payload.len());
+		}
+		let ret = u32::from_le_bytes(frame.payload[..4].try_into().unwrap());
+		if ret != 0 {
+			bail!("write failed at lba {lba}: 0x{ret:08x}");
+		}
+
+		if (i & 0xFF) == 0 {
+			eprintln!("written {}/{} blocks", i + 1, blocks);
+		}
+	}
+
+	Ok(())
+}
+
+fn prepare_emmc(client: &mut Client) -> Result<u32> {
+	let _ver = client.cmd_u32(CMD_GET_VERSION, 0)?;
+	let _ = client.cmd_u32(CMD_SET_SMC_WORKAROUND, 0)?;
+	client.request_response(&cmd_payload(CMD_STOP_SMC, 0))?;
+	std::thread::sleep(Duration::from_millis(500));
+
+	let detect = client.request_response(&cmd_payload(CMD_EMMC_DETECT, 0))?;
+	if detect.payload.len() != 1 || detect.payload[0] == 0 {
+		bail!("eMMC not detected");
+	}
+
+	let ret = client.cmd_u32(CMD_EMMC_INIT, 0)?;
+	if ret != 0 {
+		bail!("EMMC_INIT failed: {ret}");
+	}
+
+	let ext = client.request_response(&cmd_payload(CMD_EMMC_GET_EXT_CSD, 0))?;
+	if ext.payload.len() != 512 {
+		bail!("unexpected EXT_CSD length {}", ext.payload.len());
+	}
+
+	let sec_count = u32::from_le_bytes(ext.payload[212..216].try_into().unwrap());
+	if sec_count == 0 {
+		bail!("invalid EXT_CSD SEC_COUNT=0");
+	}
+	Ok(sec_count)
+}
+
+fn read_emmc(client: &mut Client, out: std::path::PathBuf, start: u32, count: u32) -> Result<()> {
+	let mut f = File::create(out).context("open output")?;
+
+	if start == 0 {
+		client.send_request(&cmd_payload(CMD_EMMC_READ_STREAM, count))?;
+		for i in 0..count {
+			let frame = client.recv_response()?;
+			if frame.payload.len() < 4 {
+				bail!("short response at block {i}");
+			}
+			let ret = u32::from_le_bytes(frame.payload[0..4].try_into().unwrap());
+			if ret != 0 {
+				bail!("read failed at block {i}: {ret}");
 			}
 			if frame.payload.len() != 4 + 0x200 {
-				bail!("expected {} bytes, got {}", 4 + 0x200, frame.payload.len());
+				bail!("bad payload size at block {i}: {}", frame.payload.len());
 			}
-			let mut f = File::create(out).context("open output")?;
 			f.write_all(&frame.payload[4..]).context("write output")?;
-			println!("ok");
-		}
-		Command::EmmcWrite { lba, input } => {
-			let mut buf = vec![];
-			File::open(input)
-				.context("open input")?
-				.read_to_end(&mut buf)
-				.context("read input")?;
-			if buf.len() != 0x200 {
-				bail!("expected 0x200 bytes input, got 0x{:x}", buf.len());
-			}
 
-			client.send_cmd(CMD_EMMC_WRITE, lba, &buf)?;
-			let frame = client.recv_response()?;
-			if frame.payload.len() != 4 {
-				bail!("expected 4-byte response, got {}", frame.payload.len());
+			if (i & 0xFF) == 0 {
+				eprintln!("read {}/{} blocks", i + 1, count);
 			}
-			let ret = u32::from_le_bytes(frame.payload[..4].try_into().unwrap());
-			if ret != 0 {
-				bail!("write failed: {ret}");
-			}
-			println!("ok");
 		}
-		Command::EmmcDump {
-			start,
-			count,
-			out,
-			use_stream,
-		} => {
-			let mut f = File::create(out).context("open output")?;
-			if use_stream {
-				if start != 0 {
-					bail!("stream mode only supports start=0 with current ESP server");
-				}
-				client.send_request(&cmd_payload(CMD_EMMC_READ_STREAM, count))?;
-				for i in 0..count {
-					let frame = client.recv_response()?;
-					if frame.payload.len() < 4 {
-						bail!("short response at block {i}");
-					}
-					let ret = u32::from_le_bytes(frame.payload[0..4].try_into().unwrap());
-					if ret != 0 {
-						bail!("read failed at block {i}: {ret}");
-					}
-					if frame.payload.len() != 4 + 0x200 {
-						bail!("bad payload size at block {i}: {}", frame.payload.len());
-					}
-					f.write_all(&frame.payload[4..]).context("write output")?;
-				}
-			} else {
-				for i in 0..count {
-					let lba = start + i;
-					let frame = client.request_response(&cmd_payload(CMD_EMMC_READ, lba))?;
-					if frame.payload.len() < 4 {
-						bail!("short response at lba {lba}");
-					}
-					let ret = u32::from_le_bytes(frame.payload[0..4].try_into().unwrap());
-					if ret != 0 {
-						bail!("read failed at lba {lba}: {ret}");
-					}
-					if frame.payload.len() != 4 + 0x200 {
-						bail!("bad payload size at lba {lba}: {}", frame.payload.len());
-					}
-					f.write_all(&frame.payload[4..]).context("write output")?;
-				}
+	} else {
+		for i in 0..count {
+			let lba = start + i;
+			let frame = client.request_response(&cmd_payload(CMD_EMMC_READ, lba))?;
+			if frame.payload.len() < 4 {
+				bail!("short response at lba {lba}");
 			}
-			println!("ok");
+			let ret = u32::from_le_bytes(frame.payload[0..4].try_into().unwrap());
+			if ret != 0 {
+				bail!("read failed at lba {lba}: {ret}");
+			}
+			if frame.payload.len() != 4 + 0x200 {
+				bail!("bad payload size at lba {lba}: {}", frame.payload.len());
+			}
+			f.write_all(&frame.payload[4..]).context("write output")?;
+
+			if (i & 0xFF) == 0 {
+				eprintln!("read {}/{} blocks", i + 1, count);
+			}
+		}
+	}
+
+	Ok(())
+}
+
+fn write_emmc(client: &mut Client, input: std::path::PathBuf, start: u32) -> Result<()> {
+	let mut buf = vec![];
+	File::open(input)
+		.context("open input")?
+		.read_to_end(&mut buf)
+		.context("read input")?;
+
+	if buf.len() % 0x200 != 0 {
+		bail!("input size must be a multiple of 0x200 (got 0x{:x})", buf.len());
+	}
+
+	let blocks = (buf.len() / 0x200) as u32;
+	for i in 0..blocks {
+		let lba = start + i;
+		let off = (i as usize) * 0x200;
+		let chunk = &buf[off..off + 0x200];
+
+		client.send_cmd(CMD_EMMC_WRITE, lba, chunk)?;
+		let frame = client.recv_response()?;
+		if frame.payload.len() != 4 {
+			bail!("expected 4-byte response at lba {lba}, got {}", frame.payload.len());
+		}
+		let ret = u32::from_le_bytes(frame.payload[..4].try_into().unwrap());
+		if ret != 0 {
+			bail!("write failed at lba {lba}: {ret}");
+		}
+
+		if (i & 0xFF) == 0 {
+			eprintln!("written {}/{} blocks", i + 1, blocks);
 		}
 	}
 
