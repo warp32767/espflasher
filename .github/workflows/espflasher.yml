@@ -21,6 +21,7 @@ jobs:
       - name: Build (ESP-IDF)
         run: |
           git config --global --add safe.directory "*"
+          . /opt/esp/entrypoint.sh
           idf.py set-target esp32
           idf.py build
 
