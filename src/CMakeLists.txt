@@ -2,6 +2,7 @@ idf_component_register(
     SRCS
         "main.c"
         "pfc_server.c"
+        "wifi.c"
         "spiex.c"
         "xbox.c"
     INCLUDE_DIRS

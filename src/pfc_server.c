@@ -7,7 +7,6 @@
 
 #include "lwip/inet.h"
 #include "lwip/sockets.h"
-#include "lwip/tcp.h"
 
 #include "esp_log.h"
 
@@ -56,6 +55,10 @@ static int recv_all(int sock, void *buf, size_t len)
 			if (errno == EINTR) {
 				continue;
 			}
+			if (errno == EAGAIN || errno == EWOULDBLOCK) {
+				vTaskDelay(pdMS_TO_TICKS(1));
+				continue;
+			}
 			return -1;
 		}
 		p += (size_t)r;
@@ -72,6 +75,10 @@ static int send_all(int sock, const void *buf, size_t len)
 		int r = send(sock, p, left, 0);
 		if (r < 0) {
 			if (errno == EINTR) {
+				continue;
+			}
+			if (errno == EAGAIN || errno == EWOULDBLOCK) {
+				vTaskDelay(pdMS_TO_TICKS(1));
 				continue;
 			}
 			return -1;
@@ -425,17 +432,6 @@ static void pfc_server_task(void *arg)
 		int sock = accept(listen_sock, (struct sockaddr *)&source_addr, &addr_len);
 		if (sock < 0) {
 			continue;
-		}
-
-		{
-			int one = 1;
-			setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
-
-			int snd = 16 * 1024;
-			setsockopt(sock, SOL_SOCKET, SO_SNDBUF, &snd, sizeof(snd));
-
-			int rcv = 16 * 1024;
-			setsockopt(sock, SOL_SOCKET, SO_RCVBUF, &rcv, sizeof(rcv));
 		}
 
 		ESP_LOGI(TAG, "client connected");
