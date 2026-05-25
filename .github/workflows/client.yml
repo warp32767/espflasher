@@ -50,7 +50,7 @@ jobs:
           workspaces: client -> target
 
       - name: Build
-        run: cargo build --release --locked --target ${{ matrix.target }}
+        run: cargo build --release --target ${{ matrix.target }}
 
       - name: Stage artifact
         shell: bash
