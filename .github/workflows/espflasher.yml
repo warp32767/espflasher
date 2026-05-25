@@ -1,6 +1,7 @@
 name: esp32-firmware
 
 on:
+  workflow_dispatch:
   push:
     tags:
       - "esp32-v*"
