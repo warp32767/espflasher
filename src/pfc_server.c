@@ -381,6 +381,10 @@ static void handle_client(int sock)
 	}
 
 	free(payload);
+
+	if (xbox_smc_stopped) {
+		xbox_start_smc();
+	}
 }
 
 static void pfc_server_task(void *arg)
